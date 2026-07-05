@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>เบิกกุญแจโฟล์คลิฟ — Makro Store 17</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{--red:#E8192C;--red-dark:#C01020;--red-light:#FFF0F1;--green:#006E33;--green-light:#F0FAF4}
+body{background:#f5f5f5;font-family:'Sarabun',sans-serif;min-height:100vh}
+.phone{background:#fff;max-width:430px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.hdr{background:var(--red);padding:18px 16px 14px;text-align:center}
+.hdr-icon{font-size:30px;margin-bottom:4px}
+.hdr-title{font-size:22px;font-weight:600;color:#fff}
+.hdr-date{font-size:12px;color:rgba(255,255,255,.75);margin-top:3px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;padding:12px 12px 0;background:#fff;border-bottom:1px solid #eee}
+.tab-btn{padding:12px;border-radius:10px 10px 0 0;font-size:16px;font-weight:500;cursor:pointer;border:1px solid #ddd;border-bottom:none;background:#f8f8f8;color:#888}
+.tab-btn.active{background:var(--red-light);color:var(--red);border-color:var(--red)}
+.body{padding:16px;flex:1}
+.field-label{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
+.req{color:var(--red)}
+.key-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:20px}
+.key-btn{aspect-ratio:1;border-radius:10px;border:1px solid #ddd;background:#fff;font-size:17px;font-weight:500;color:#333;cursor:pointer}
+.key-btn.selected{background:var(--red);color:#fff;border-color:var(--red)}
+.key-btn:disabled{background:#f0f0f0;color:#ccc;cursor:not-allowed}
+.inp{width:100%;padding:12px 14px;border:1px solid #ddd;border-radius:10px;font-size:15px;color:#333;font-family:inherit;outline:none;margin-bottom:20px}
+.inp:focus{border-color:var(--red)}
+.inp::placeholder{color:#bbb}
+select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+.warning{background:#FFF8E1;border:1px solid #FFD54F;border-radius:8px;padding:9px 12px;font-size:13px;color:#8B6A00;margin-bottom:20px;display:flex;align-items:center;gap:6px}
+.submit-btn{width:100%;padding:15px;border-radius:12px;border:none;font-size:17px;font-weight:600;cursor:pointer;font-family:inherit}
+.submit-btn.borrow{background:var(--red);color:#fff}
+.submit-btn.return-btn{background:var(--green);color:#fff}
+.submit-btn:disabled{background:#ddd;color:#aaa;cursor:default}
+.return-card{border:1px solid #eee;border-radius:12px;overflow:hidden}
+.return-item{padding:14px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between}
+.return-item:last-child{border-bottom:none}
+.ri-key{font-size:16px;font-weight:600;color:#1a1a1a}
+.ri-meta{font-size:13px;color:#888;margin-top:2px}
+.ri-btn{background:var(--green-light);color:var(--green);border:1px solid #9FE1CB;border-radius:8px;padding:7px 16px;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit}
+.empty{text-align:center;padding:48px 16px;color:#bbb}
+.success-screen{text-align:center;padding:32px 16px}
+.success-icon{font-size:52px;margin-bottom:12px}
+.success-title{font-size:20px;font-weight:600;color:#1a1a1a;margin-bottom:6px}
+.success-sub{font-size:14px;color:#888;margin-bottom:24px}
+.success-card{background:#f8f9fb;border-radius:12px;padding:16px;text-align:left;margin-bottom:24px;border:1px solid #eee}
+.sc-row{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;border-bottom:1px solid #f0f0f0}
+.sc-row:last-child{border-bottom:none}
+.sc-label{color:#888}
+.sc-val{font-weight:600;color:#1a1a1a}
+.back-btn{background:#f0f0f0;color:#555;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit}
+.sig-wrap{margin-bottom:20px}
+.sig-canvas{width:100%;height:160px;border:1.5px dashed #ddd;border-radius:10px;display:block;touch-action:none;cursor:crosshair;background:#fafafa}
+.sig-canvas.signed{border-color:var(--green);border-style:solid;background:#fff}
+.sig-actions{display:flex;justify-content:flex-end;margin-top:6px}
+.sig-clear{background:none;border:none;font-size:13px;color:#aaa;cursor:pointer;padding:4px 8px;font-family:inherit}
+.sig-clear:hover{color:var(--red)}
+.sig-hint{font-size:12px;color:#bbb;text-align:center;margin-top:4px}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="phone">
+  <div class="hdr">
+    <div style="font-size:22px;font-weight:600;color:#fff;letter-spacing:.04em;margin-bottom:2px">ST. 42 รามอินทรา</div>
+    <div class="hdr-icon">🔑</div>
+    <div class="hdr-title">เบิกกุญแจโฟล์คลิฟ</div>
+    <div class="hdr-date" id="hdrDate"></div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-borrow" onclick="switchTab('borrow')">เบิกกุญแจ</button>
+    <button class="tab-btn" id="tab-return" onclick="switchTab('return')">คืนกุญแจ</button>
+  </div>
+  <div class="body">
+    <div id="view-borrow">
+      <div class="field-label">เบอร์กุญแจที่เบิก <span class="req">*</span></div>
+      <div class="key-grid" id="keyGrid"></div>
+      <div class="field-label">ชื่อผู้เบิก <span class="req">*</span></div>
+      <input class="inp" type="text" id="borrowName" placeholder="ชื่อ-นามสกุล" oninput="validateBorrow()">
+      <div class="field-label">แผนก <span class="req">*</span></div>
+      <select class="inp" id="borrowDept" onchange="validateBorrow()">
+        <option value="">เลือกแผนก</option>
+        <option value="FV">FV</option>
+        <option value="FS">FS</option>
+        <option value="BU">BU</option>
+        <option value="BK">BK</option>
+        <option value="DAILY FZ">DAILY FZ</option>
+        <option value="DF 1">DF 1</option>
+        <option value="DF 2">DF 2</option>
+        <option value="NF 1">NF 1</option>
+        <option value="NF 2">NF 2</option>
+        <option value="GR">GR</option>
+        <option value="O2O">O2O</option>
+        <option value="SAFETY">SAFETY</option>
+      </select>
+      <div class="field-label">เลขบัตรใบอนุญาตขับโฟล์คลิฟ <span class="req">*</span></div>
+      <input class="inp" type="tel" id="licenseNo" maxlength="5" placeholder="กรอกเลขใบอนุญาต 5 หลัก" oninput="onLicense(this)">
+      <div class="warning">⚠️ ต้องกรอกเลขใบอนุญาต 5 หลักก่อนจึงจะเบิกได้</div>
+      <button class="submit-btn borrow" id="borrowBtn" disabled onclick="submitBorrow()">✓ ยืนยันการเบิกกุญแจ</button>
+    </div>
+    <div id="view-return" style="display:none">
+      <div id="returnList"></div>
+    </div>
+    <div id="view-sign" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer" onclick="backToReturnList()">
+        <span style="font-size:20px;color:var(--red)">&#8592;</span>
+        <span style="font-size:14px;color:var(--red);font-weight:500">กลับเลือกกุญแจ</span>
+      </div>
+      <div class="success-card" id="signKeyInfo" style="margin-bottom:20px"></div>
+      <div class="field-label">เซ็นชื่อยืนยันการคืน <span class="req">*</span></div>
+      <div class="sig-wrap">
+        <canvas class="sig-canvas" id="sigCanvas"></canvas>
+        <div class="sig-hint">ใช้นิ้วเซ็นชื่อในกรอบด้านบน</div>
+        <div class="sig-actions">
+          <button class="sig-clear" onclick="clearSig()">ล้างลายเซ็น ✕</button>
+        </div>
+      </div>
+      <button class="submit-btn return-btn" id="signConfirmBtn" disabled onclick="confirmReturn()">✓ ยืนยันการคืนกุญแจ</button>
+    </div>
+    <div id="view-success" style="display:none">
+      <div class="success-screen">
+        <div class="success-icon" id="successIcon"></div>
+        <div class="success-title" id="successTitle"></div>
+        <div class="success-sub" id="successSub"></div>
+        <div class="success-card" id="successCard"></div>
+        <button class="back-btn" onclick="goHome()">กลับหน้าหลัก</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const KEYS=30;
+let selectedKey=null,borrowed=[],currentTab='borrow',pendingReturnId=null;
+let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
+
+function init(){
+  const now=new Date();
+  document.getElementById('hdrDate').textContent='วันที่ '+now.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'})+' เวลา '+now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
+  buildKeyGrid();renderReturn();
+}
+
+function buildKeyGrid(){
+  const g=document.getElementById('keyGrid');g.innerHTML='';
+  for(let i=1;i<=KEYS;i++){
+    const b=borrowed.find(x=>x.key===i);
+    const btn=document.createElement('button');
+    btn.className='key-btn'+(selectedKey===i?' selected':'');
+    btn.textContent=i;
+    if(b)btn.disabled=true;
+    btn.onclick=()=>selectKey(i);
+    g.appendChild(btn);
+  }
+}
+function selectKey(k){if(borrowed.find(x=>x.key===k))return;selectedKey=selectedKey===k?null:k;buildKeyGrid();validateBorrow();}
+function onLicense(el){el.value=el.value.replace(/\D/g,'');validateBorrow();}
+function validateBorrow(){
+  const ok=selectedKey&&document.getElementById('borrowName').value.trim().length>1&&document.getElementById('borrowDept').value&&document.getElementById('licenseNo').value.length===5;
+  document.getElementById('borrowBtn').disabled=!ok;
+}
+function submitBorrow(){
+  const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  const entry={key:selectedKey,name:document.getElementById('borrowName').value.trim(),dept:document.getElementById('borrowDept').value,license:document.getElementById('licenseNo').value,time:tm,id:Date.now()};
+  borrowed.push(entry);
+  showSuccess('✅','เบิกกุญแจสำเร็จ!','กุญแจ #'+entry.key+' พร้อมใช้งาน',
+    `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
+     <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
+     <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
+     <div class="sc-row"><span class="sc-label">ใบอนุญาต</span><span class="sc-val">${entry.license}</span></div>
+     <div class="sc-row"><span class="sc-label">เวลา</span><span class="sc-val">${entry.time} น.</span></div>`);
+  selectedKey=null;
+  document.getElementById('borrowName').value='';
+  document.getElementById('borrowDept').value='';
+  document.getElementById('licenseNo').value='';
+  document.getElementById('borrowBtn').disabled=true;
+  buildKeyGrid();
+}
+
+function renderReturn(){
+  const el=document.getElementById('returnList');
+  if(!borrowed.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีกุญแจที่ถูกเบิก</p></div>';return;}
+  el.innerHTML='<div class="field-label" style="margin-bottom:10px">เลือกกุญแจที่จะคืน <span class="req">*</span></div>'+
+    '<div class="return-card">'+
+    borrowed.map(b=>`
+      <div class="return-item">
+        <div><div class="ri-key">กุญแจ #${b.key}</div><div class="ri-meta">${b.name} (${b.dept}) · เบิก ${b.time} น.</div></div>
+        <button class="ri-btn" onclick="openSignature(${b.id})">เลือก</button>
+      </div>`).join('')+
+    '</div>';
+}
+
+function openSignature(id){
+  pendingReturnId=id;
+  const entry=borrowed.find(b=>b.id===id);
+  if(!entry)return;
+  document.getElementById('view-return').style.display='none';
+  document.getElementById('view-sign').style.display='block';
+  document.getElementById('signKeyInfo').innerHTML=
+    `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
+     <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
+     <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
+     <div class="sc-row"><span class="sc-label">เวลาเบิก</span><span class="sc-val">${entry.time} น.</span></div>`;
+  initSigPad();
+}
+
+function initSigPad(){
+  sigCanvas=document.getElementById('sigCanvas');
+  sigCtx=sigCanvas.getContext('2d');
+  const rect=sigCanvas.getBoundingClientRect();
+  sigCanvas.width=rect.width*window.devicePixelRatio||sigCanvas.offsetWidth*2;
+  sigCanvas.height=rect.height*window.devicePixelRatio||320;
+  sigCtx.scale(window.devicePixelRatio||2,window.devicePixelRatio||2);
+  sigCtx.strokeStyle='#1a1a1a';sigCtx.lineWidth=2.5;sigCtx.lineCap='round';sigCtx.lineJoin='round';
+  hasSig=false;isSigning=false;
+  sigCanvas.classList.remove('signed');
+  document.getElementById('signConfirmBtn').disabled=true;
+
+  function getPos(e){
+    const r=sigCanvas.getBoundingClientRect();
+    const src=e.touches?e.touches[0]:e;
+    return{x:src.clientX-r.left,y:src.clientY-r.top};
+  }
+  function startDraw(e){e.preventDefault();isSigning=true;const p=getPos(e);lastX=p.x;lastY=p.y;sigCtx.beginPath();sigCtx.moveTo(p.x,p.y);}
+  function draw(e){e.preventDefault();if(!isSigning)return;const p=getPos(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke();lastX=p.x;lastY=p.y;if(!hasSig){hasSig=true;sigCanvas.classList.add('signed');document.getElementById('signConfirmBtn').disabled=false;}}
+  function endDraw(e){e.preventDefault();isSigning=false;}
+
+  sigCanvas.removeEventListener('mousedown',sigCanvas._md);
+  sigCanvas.removeEventListener('mousemove',sigCanvas._mm);
+  sigCanvas.removeEventListener('mouseup',sigCanvas._mu);
+  sigCanvas.removeEventListener('touchstart',sigCanvas._ts);
+  sigCanvas.removeEventListener('touchmove',sigCanvas._tm);
+  sigCanvas.removeEventListener('touchend',sigCanvas._te);
+
+  sigCanvas._md=startDraw;sigCanvas._mm=draw;sigCanvas._mu=endDraw;
+  sigCanvas._ts=startDraw;sigCanvas._tm=draw;sigCanvas._te=endDraw;
+
+  sigCanvas.addEventListener('mousedown',sigCanvas._md);
+  sigCanvas.addEventListener('mousemove',sigCanvas._mm);
+  sigCanvas.addEventListener('mouseup',sigCanvas._mu);
+  sigCanvas.addEventListener('touchstart',sigCanvas._ts,{passive:false});
+  sigCanvas.addEventListener('touchmove',sigCanvas._tm,{passive:false});
+  sigCanvas.addEventListener('touchend',sigCanvas._te,{passive:false});
+}
+
+function clearSig(){
+  if(!sigCtx)return;
+  sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height);
+  hasSig=false;sigCanvas.classList.remove('signed');
+  document.getElementById('signConfirmBtn').disabled=true;
+}
+
+function backToReturnList(){
+  document.getElementById('view-sign').style.display='none';
+  document.getElementById('view-return').style.display='block';
+  pendingReturnId=null;
+}
+
+function confirmReturn(){
+  if(!hasSig||!pendingReturnId)return;
+  const entry=borrowed.find(b=>b.id===pendingReturnId);
+  if(!entry)return;
+  const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+  borrowed=borrowed.filter(b=>b.id!==pendingReturnId);
+  pendingReturnId=null;
+  document.getElementById('view-sign').style.display='none';
+  showSuccess('🔑','คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
+    `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
+     <div class="sc-row"><span class="sc-label">ผู้คืน</span><span class="sc-val">${entry.name}</span></div>
+     <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
+     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`);
+  buildKeyGrid();
+}
+
+function showSuccess(icon,title,sub,cardHtml){
+  ['view-borrow','view-return','view-sign'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('view-success').style.display='block';
+  document.getElementById('successIcon').textContent=icon;
+  document.getElementById('successTitle').textContent=title;
+  document.getElementById('successSub').textContent=sub;
+  document.getElementById('successCard').innerHTML=cardHtml;
+}
+
+function switchTab(t){
+  currentTab=t;
+  document.getElementById('tab-borrow').classList.toggle('active',t==='borrow');
+  document.getElementById('tab-return').classList.toggle('active',t==='return');
+  ['view-borrow','view-return','view-sign','view-success'].forEach(id=>document.getElementById(id).style.display='none');
+  if(t==='borrow')document.getElementById('view-borrow').style.display='block';
+  else{document.getElementById('view-return').style.display='block';renderReturn();}
+}
+
+function goHome(){
+  ['view-success','view-sign'].forEach(id=>document.getElementById(id).style.display='none');
+  if(currentTab==='borrow')document.getElementById('view-borrow').style.display='block';
+  else{document.getElementById('view-return').style.display='block';renderReturn();}
+}
+
+init();
+</script>
+</body>
+</html>
