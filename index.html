@@ -61,6 +61,12 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .dash-badge{font-size:12px;font-weight:600;border-radius:6px;padding:2px 7px;margin-right:6px}
 .dash-badge.borrow{background:var(--red-light);color:var(--red)}
 .dash-badge.return-b{background:var(--green-light);color:var(--green)}
+.dash-badge.return-late{background:var(--red-light);color:var(--red)}
+.dash-badge.warn{background:#FFF8E1;color:#8B6A00}
+.hist-green{background:var(--green-light);border-left:4px solid var(--green)}
+.hist-yellow{background:#FFF8E1;border-left:4px solid #FFD54F}
+.hist-red{background:var(--red-light);border-left:4px solid var(--red)}
+.hist-reason{font-size:12.5px;color:#8B6A00;margin-top:4px;font-style:italic}
 .pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
 .pin-box{background:#fff;border-radius:16px;padding:26px 20px;width:100%;max-width:320px;text-align:center}
 .pin-title{font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:4px}
@@ -76,6 +82,11 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .alert-banner{background:#FFF8E1;border-bottom:1px solid #FFD54F;color:#8B6A00;font-size:13px;padding:10px 16px;line-height:1.6}
 .lock-badge{font-size:12.5px;font-weight:600;color:#999;background:#f0f0f0;border-radius:8px;padding:7px 12px;white-space:nowrap;text-align:center}
 .lock-badge.soon{color:#8B6A00;background:#FFF8E1;border:1px solid #FFD54F}
+.overdue-block{background:var(--red-light);border:1px solid #F8B7BC;border-radius:10px;padding:14px;margin-bottom:20px}
+.overdue-title{font-size:14px;font-weight:600;color:var(--red);margin-bottom:10px}
+textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
+.pin-row{margin-bottom:10px}
+.pin-row-label{font-size:12.5px;color:#888;margin-bottom:4px;text-align:left}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -90,7 +101,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   <div class="tabs">
     <button class="tab-btn active" id="tab-borrow" onclick="switchTab('borrow')">เบิกกุญแจ</button>
     <button class="tab-btn" id="tab-return" onclick="switchTab('return')">คืนกุญแจ</button>
-    <button class="tab-btn" id="tab-dashboard" onclick="switchTab('dashboard')">แดชบอร์ด</button>
+    <button class="tab-btn" id="tab-dashboard" onclick="switchTab('dashboard')">ประวัติการใช้</button>
   </div>
   <div class="alert-banner" id="alertBanner" style="display:none"></div>
   <div class="body">
@@ -137,6 +148,19 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
           <button class="sig-clear" onclick="clearSig()">ล้างลายเซ็น ✕</button>
         </div>
       </div>
+      <div id="overdueBlock" class="overdue-block" style="display:none">
+        <div class="overdue-title">⚠️ เกินกำหนดเวลาคืน 3 ชั่วโมง ต้องระบุเหตุผลและให้ผู้กำกับเซ็นยืนยัน</div>
+        <div class="field-label">เหตุผลที่คืนล่าช้า <span class="req">*</span></div>
+        <textarea class="inp" id="overdueReason" rows="2" placeholder="ระบุเหตุผล" oninput="onOverdueChange()"></textarea>
+        <div class="field-label">ลายเซ็นกำกับ (หัวหน้างาน/ผู้รับผิดชอบ) <span class="req">*</span></div>
+        <div class="sig-wrap">
+          <canvas class="sig-canvas" id="sigCanvas2"></canvas>
+          <div class="sig-hint">ใช้นิ้วเซ็นชื่อในกรอบด้านบน</div>
+          <div class="sig-actions">
+            <button class="sig-clear" onclick="clearSig2()">ล้างลายเซ็น ✕</button>
+          </div>
+        </div>
+      </div>
       <button class="submit-btn return-btn" id="signConfirmBtn" disabled onclick="requestPin()">✓ ยืนยันการคืนกุญแจ</button>
     </div>
     <div id="view-success" style="display:none">
@@ -157,9 +181,16 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 </div>
 <div class="pin-overlay" id="pinOverlay" style="display:none">
   <div class="pin-box">
-    <div class="pin-title">กรอกรหัส PIN</div>
-    <div class="pin-sub">ยืนยันตัวตนก่อนคืนกุญแจ</div>
-    <input class="pin-input" id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter')verifyPin()">
+    <div class="pin-title" id="pinTitle">กรอกรหัส PIN</div>
+    <div class="pin-sub" id="pinSub">ยืนยันตัวตนก่อนคืนกุญแจ</div>
+    <div class="pin-row">
+      <div class="pin-row-label" id="pinRowLabel1" style="display:none">รหัส PIN คนที่ 1</div>
+      <input class="pin-input" id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter')verifyPin()">
+    </div>
+    <div class="pin-row" id="pinRow2" style="display:none">
+      <div class="pin-row-label">รหัส PIN คนที่ 2 (ต้องไม่ซ้ำกับคนที่ 1)</div>
+      <input class="pin-input" id="pinInput2" type="password" inputmode="numeric" maxlength="4" placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter')verifyPin()">
+    </div>
     <div class="pin-error" id="pinError" style="visibility:hidden">รหัส PIN ไม่ถูกต้อง</div>
     <div class="pin-actions">
       <button class="pin-cancel" onclick="closePinModal()">ยกเลิก</button>
@@ -169,14 +200,15 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 </div>
 <script>
 const KEYS=30;
-const VALID_PINS=['0042','4200'];
+const VALID_PINS=['0042','4200','4242'];
 const HISTORY_KEY='forkliftHistory';
 const HISTORY_DAYS=30;
 const BORROWED_KEY='forkliftBorrowed';
 const LOCK_MS=3*60*60*1000;
 const WARN_LEAD=30*60*1000;
-let selectedKey=null,borrowed=[],currentTab='borrow',pendingReturnId=null;
+let selectedKey=null,borrowed=[],currentTab='borrow',pendingReturnId=null,isOverdueReturn=false;
 let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
+let sigCanvas2,sigCtx2,isSigning2=false,hasSig2=false,lastX2=0,lastY2=0;
 
 function loadHistory(){
   let h;
@@ -226,6 +258,7 @@ function tick(){
     if(remain>0&&remain<=WARN_LEAD&&!b.notified30){
       b.notified30=true;changed=true;
       notifyUser(`กุญแจ #${b.key} (${b.name}) จะครบกำหนดคืนใน 30 นาที`);
+      addHistory({ts:Date.now(),type:'warning',key:b.key,name:b.name,dept:b.dept});
     }
   });
   if(changed)saveBorrowed();
@@ -286,18 +319,21 @@ function renderReturn(){
   if(!borrowed.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีกุญแจที่ถูกเบิก</p></div>';return;}
   const now=Date.now();
   el.innerHTML='<div class="field-label" style="margin-bottom:10px">เลือกกุญแจที่จะคืน <span class="req">*</span></div>'+
-    '<div class="warning" style="margin-bottom:14px">⏰ ต้องเบิกกุญแจอย่างน้อย 3 ชั่วโมงจึงจะสามารถคืนได้</div>'+
+    '<div class="warning" style="margin-bottom:14px">⏰ ควรคืนภายใน 3 ชั่วโมงหลังเบิก มิฉะนั้นถือว่าเกินกำหนด</div>'+
     '<div class="return-card">'+
     borrowed.map(b=>{
       const remain=LOCK_MS-(now-b.id);
-      const locked=remain>0;
-      const right=locked
-        ?`<div class="lock-badge${remain<=WARN_LEAD?' soon':''}">🔒 อีก ${fmtRemain(remain)}</div>`
-        :`<button class="ri-btn" onclick="openSignature(${b.id})">เลือก</button>`;
+      const overdue=remain<=0;
+      const statusTag=overdue
+        ?`<div class="lock-badge" style="color:var(--red);background:var(--red-light);border:1px solid #F8B7BC">เกินกำหนด ${fmtRemain(-remain)}</div>`
+        :`<div class="lock-badge${remain<=WARN_LEAD?' soon':''}">ครบกำหนดใน ${fmtRemain(remain)}</div>`;
       return `
       <div class="return-item">
         <div><div class="ri-key">กุญแจ #${b.key}</div><div class="ri-meta">${b.name} (${b.dept}) · เบิก ${b.time} น.</div></div>
-        ${right}
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          ${statusTag}
+          <button class="ri-btn" onclick="openSignature(${b.id})">เลือก</button>
+        </div>
       </div>`;
     }).join('')+
     '</div>';
@@ -306,8 +342,8 @@ function renderReturn(){
 function openSignature(id){
   const entry=borrowed.find(b=>b.id===id);
   if(!entry)return;
-  if(Date.now()-entry.id<LOCK_MS){alert('ยังไม่ครบกำหนด 3 ชั่วโมง ไม่สามารถคืนกุญแจนี้ได้ในขณะนี้');return;}
   pendingReturnId=id;
+  isOverdueReturn=(Date.now()-entry.id)>LOCK_MS;
   document.getElementById('view-return').style.display='none';
   document.getElementById('view-sign').style.display='block';
   document.getElementById('signKeyInfo').innerHTML=
@@ -315,7 +351,19 @@ function openSignature(id){
      <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
      <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
      <div class="sc-row"><span class="sc-label">เวลาเบิก</span><span class="sc-val">${entry.time} น.</span></div>`;
+  document.getElementById('overdueBlock').style.display=isOverdueReturn?'block':'none';
+  document.getElementById('overdueReason').value='';
   initSigPad();
+  if(isOverdueReturn)initSigPad2();else{hasSig2=false;}
+  updateSignConfirmState();
+}
+
+function onOverdueChange(){updateSignConfirmState();}
+
+function updateSignConfirmState(){
+  const reasonOk=!isOverdueReturn||document.getElementById('overdueReason').value.trim().length>0;
+  const sig2Ok=!isOverdueReturn||hasSig2;
+  document.getElementById('signConfirmBtn').disabled=!(hasSig&&reasonOk&&sig2Ok);
 }
 
 function initSigPad(){
@@ -336,7 +384,7 @@ function initSigPad(){
     return{x:src.clientX-r.left,y:src.clientY-r.top};
   }
   function startDraw(e){e.preventDefault();isSigning=true;const p=getPos(e);lastX=p.x;lastY=p.y;sigCtx.beginPath();sigCtx.moveTo(p.x,p.y);}
-  function draw(e){e.preventDefault();if(!isSigning)return;const p=getPos(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke();lastX=p.x;lastY=p.y;if(!hasSig){hasSig=true;sigCanvas.classList.add('signed');document.getElementById('signConfirmBtn').disabled=false;}}
+  function draw(e){e.preventDefault();if(!isSigning)return;const p=getPos(e);sigCtx.lineTo(p.x,p.y);sigCtx.stroke();lastX=p.x;lastY=p.y;if(!hasSig){hasSig=true;sigCanvas.classList.add('signed');updateSignConfirmState();}}
   function endDraw(e){e.preventDefault();isSigning=false;}
 
   sigCanvas.removeEventListener('mousedown',sigCanvas._md);
@@ -361,7 +409,52 @@ function clearSig(){
   if(!sigCtx)return;
   sigCtx.clearRect(0,0,sigCanvas.width,sigCanvas.height);
   hasSig=false;sigCanvas.classList.remove('signed');
-  document.getElementById('signConfirmBtn').disabled=true;
+  updateSignConfirmState();
+}
+
+function initSigPad2(){
+  sigCanvas2=document.getElementById('sigCanvas2');
+  sigCtx2=sigCanvas2.getContext('2d');
+  const rect=sigCanvas2.getBoundingClientRect();
+  sigCanvas2.width=rect.width*window.devicePixelRatio||sigCanvas2.offsetWidth*2;
+  sigCanvas2.height=rect.height*window.devicePixelRatio||320;
+  sigCtx2.scale(window.devicePixelRatio||2,window.devicePixelRatio||2);
+  sigCtx2.strokeStyle='#1a1a1a';sigCtx2.lineWidth=2.5;sigCtx2.lineCap='round';sigCtx2.lineJoin='round';
+  hasSig2=false;isSigning2=false;
+  sigCanvas2.classList.remove('signed');
+
+  function getPos(e){
+    const r=sigCanvas2.getBoundingClientRect();
+    const src=e.touches?e.touches[0]:e;
+    return{x:src.clientX-r.left,y:src.clientY-r.top};
+  }
+  function startDraw(e){e.preventDefault();isSigning2=true;const p=getPos(e);lastX2=p.x;lastY2=p.y;sigCtx2.beginPath();sigCtx2.moveTo(p.x,p.y);}
+  function draw(e){e.preventDefault();if(!isSigning2)return;const p=getPos(e);sigCtx2.lineTo(p.x,p.y);sigCtx2.stroke();lastX2=p.x;lastY2=p.y;if(!hasSig2){hasSig2=true;sigCanvas2.classList.add('signed');updateSignConfirmState();}}
+  function endDraw(e){e.preventDefault();isSigning2=false;}
+
+  sigCanvas2.removeEventListener('mousedown',sigCanvas2._md);
+  sigCanvas2.removeEventListener('mousemove',sigCanvas2._mm);
+  sigCanvas2.removeEventListener('mouseup',sigCanvas2._mu);
+  sigCanvas2.removeEventListener('touchstart',sigCanvas2._ts);
+  sigCanvas2.removeEventListener('touchmove',sigCanvas2._tm);
+  sigCanvas2.removeEventListener('touchend',sigCanvas2._te);
+
+  sigCanvas2._md=startDraw;sigCanvas2._mm=draw;sigCanvas2._mu=endDraw;
+  sigCanvas2._ts=startDraw;sigCanvas2._tm=draw;sigCanvas2._te=endDraw;
+
+  sigCanvas2.addEventListener('mousedown',sigCanvas2._md);
+  sigCanvas2.addEventListener('mousemove',sigCanvas2._mm);
+  sigCanvas2.addEventListener('mouseup',sigCanvas2._mu);
+  sigCanvas2.addEventListener('touchstart',sigCanvas2._ts,{passive:false});
+  sigCanvas2.addEventListener('touchmove',sigCanvas2._tm,{passive:false});
+  sigCanvas2.addEventListener('touchend',sigCanvas2._te,{passive:false});
+}
+
+function clearSig2(){
+  if(!sigCtx2)return;
+  sigCtx2.clearRect(0,0,sigCanvas2.width,sigCanvas2.height);
+  hasSig2=false;sigCanvas2.classList.remove('signed');
+  updateSignConfirmState();
 }
 
 function backToReturnList(){
@@ -371,9 +464,14 @@ function backToReturnList(){
 }
 
 function requestPin(){
-  if(!hasSig||!pendingReturnId)return;
+  if(document.getElementById('signConfirmBtn').disabled||!pendingReturnId)return;
   document.getElementById('pinInput').value='';
+  document.getElementById('pinInput2').value='';
   document.getElementById('pinError').style.visibility='hidden';
+  document.getElementById('pinTitle').textContent=isOverdueReturn?'ยืนยันด้วยรหัส PIN 2 ชุด':'กรอกรหัส PIN';
+  document.getElementById('pinSub').textContent=isOverdueReturn?'กุญแจนี้เกินกำหนดคืน ต้องยืนยันด้วย PIN 2 คนที่ไม่ซ้ำกัน':'ยืนยันตัวตนก่อนคืนกุญแจ';
+  document.getElementById('pinRowLabel1').style.display=isOverdueReturn?'block':'none';
+  document.getElementById('pinRow2').style.display=isOverdueReturn?'block':'none';
   document.getElementById('pinOverlay').style.display='flex';
   setTimeout(()=>document.getElementById('pinInput').focus(),50);
 }
@@ -381,31 +479,53 @@ function closePinModal(){
   document.getElementById('pinOverlay').style.display='none';
 }
 function verifyPin(){
-  const val=document.getElementById('pinInput').value;
-  if(VALID_PINS.includes(val)){
-    closePinModal();
-    doConfirmReturn();
-  }else{
-    document.getElementById('pinError').style.visibility='visible';
-    document.getElementById('pinInput').value='';
-    document.getElementById('pinInput').focus();
+  const val1=document.getElementById('pinInput').value;
+  if(!isOverdueReturn){
+    if(VALID_PINS.includes(val1)){
+      closePinModal();
+      doConfirmReturn();
+    }else{
+      showPinError('รหัส PIN ไม่ถูกต้อง');
+    }
+    return;
   }
+  const val2=document.getElementById('pinInput2').value;
+  if(!VALID_PINS.includes(val1)||!VALID_PINS.includes(val2)){
+    showPinError('รหัส PIN ไม่ถูกต้อง');
+    return;
+  }
+  if(val1===val2){
+    showPinError('ต้องใช้รหัส PIN ที่ไม่ซ้ำกัน 2 คน');
+    return;
+  }
+  closePinModal();
+  doConfirmReturn();
+}
+function showPinError(msg){
+  const el=document.getElementById('pinError');
+  el.textContent=msg;el.style.visibility='visible';
+  document.getElementById('pinInput').value='';
+  document.getElementById('pinInput2').value='';
+  document.getElementById('pinInput').focus();
 }
 function doConfirmReturn(){
   if(!hasSig||!pendingReturnId)return;
   const entry=borrowed.find(b=>b.id===pendingReturnId);
   if(!entry)return;
+  const overdue=(Date.now()-entry.id)>LOCK_MS;
+  const reason=overdue?document.getElementById('overdueReason').value.trim():'';
   const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
   borrowed=borrowed.filter(b=>b.id!==pendingReturnId);
   pendingReturnId=null;
   saveBorrowed();
-  addHistory({ts:Date.now(),type:'return',key:entry.key,name:entry.name,dept:entry.dept});
+  addHistory({ts:Date.now(),type:'return',key:entry.key,name:entry.name,dept:entry.dept,status:overdue?'red':'green',reason});
   document.getElementById('view-sign').style.display='none';
-  showSuccess('🔑','คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
+  showSuccess(overdue?'⚠️':'🔑',overdue?'คืนกุญแจสำเร็จ (เกินกำหนด)':'คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
     `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
      <div class="sc-row"><span class="sc-label">ผู้คืน</span><span class="sc-val">${entry.name}</span></div>
      <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
-     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`,true);
+     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`+
+    (overdue?`<div class="sc-row"><span class="sc-label">เหตุผลล่าช้า</span><span class="sc-val">${reason}</span></div>`:''),true);
   buildKeyGrid();
 }
 
@@ -424,9 +544,14 @@ function renderDashboard(){
     `<div class="dash-day">${g.dayLabel}</div><div class="return-card">`+
     g.items.map(e=>{
       const timeLabel=new Date(e.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-      const isBorrow=e.type==='borrow';
-      return `<div class="return-item">
-        <div><div class="ri-key"><span class="dash-badge ${isBorrow?'borrow':'return-b'}">${isBorrow?'เบิก':'คืน'}</span>กุญแจ #${e.key}</div><div class="ri-meta">${e.name} (${e.dept}) · ${timeLabel} น.</div></div>
+      let rowClass='',badgeClass='',badgeLabel='';
+      if(e.type==='borrow'){badgeClass='borrow';badgeLabel='เบิก';}
+      else if(e.type==='warning'){rowClass='hist-yellow';badgeClass='warn';badgeLabel='แจ้งเตือน';}
+      else if(e.status==='red'){rowClass='hist-red';badgeClass='return-late';badgeLabel='คืนเกินกำหนด';}
+      else{rowClass='hist-green';badgeClass='return-b';badgeLabel='คืนตรงเวลา';}
+      const reasonHtml=(e.status==='red'&&e.reason)?`<div class="hist-reason">เหตุผล: ${e.reason}</div>`:'';
+      return `<div class="return-item ${rowClass}">
+        <div><div class="ri-key"><span class="dash-badge ${badgeClass}">${badgeLabel}</span>กุญแจ #${e.key}</div><div class="ri-meta">${e.name} (${e.dept}) · ${timeLabel} น.</div>${reasonHtml}</div>
       </div>`;
     }).join('')+
     '</div>'
