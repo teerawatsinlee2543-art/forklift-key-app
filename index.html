@@ -89,6 +89,8 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
 .pin-row-label{font-size:12.5px;color:#888;margin-bottom:4px;text-align:left}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
 <div class="phone">
@@ -203,30 +205,40 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
   </div>
 </div>
 <script>
+const firebaseConfig={
+  apiKey:"AIzaSyBldINPy4yKDb3GmsuFW6W7-ox9KMtG2ok",
+  authDomain:"forklift-key-app.firebaseapp.com",
+  databaseURL:"https://forklift-key-app-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"forklift-key-app",
+  storageBucket:"forklift-key-app.firebasestorage.app",
+  messagingSenderId:"1034204962488",
+  appId:"1:1034204962488:web:60df15ad2b16a47de05e4d"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+const borrowedRef=db.ref('borrowed');
+const historyRef=db.ref('history');
+const purgeCycleRef=db.ref('meta/purgeCycle');
+function keyNode(k){return 'k'+k;}
+
 const KEYS=30;
 const VALID_PINS=['0042','4200','4242'];
-const HISTORY_KEY='forkliftHistory';
 const HISTORY_DAYS=30;
-const BORROWED_KEY='forkliftBorrowed';
 const LOCK_MS=3*60*60*1000;
 const WARN_LEAD=30*60*1000;
-let selectedKey=null,borrowed=[],currentTab='borrow',pendingReturnId=null,isOverdueReturn=false;
+let selectedKey=null,borrowedMap={},historyList=[],currentTab='borrow',pendingReturnKey=null,isOverdueReturn=false;
 let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
 let sigCanvas2,sigCtx2,isSigning2=false,hasSig2=false,lastX2=0,lastY2=0;
+let notifiedLocally=new Set();
 
 function loadHistory(){
-  let h;
-  try{h=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch(e){h=[];}
   const cutoff=Date.now()-HISTORY_DAYS*24*60*60*1000;
-  return h.filter(e=>e.ts>=cutoff);
+  return historyList.filter(e=>e.ts>=cutoff);
 }
 function addHistory(entry){
-  const h=loadHistory();
-  h.push(entry);
-  localStorage.setItem(HISTORY_KEY,JSON.stringify(h));
+  historyRef.push(entry);
 }
 
-const PURGE_KEY='forkliftHistoryPurgeCycle';
 function currentPurgeCycle(d){
   const y=d.getFullYear(),m=d.getMonth();
   if(d.getDate()>=3)return `${y}-${m}`;
@@ -235,10 +247,12 @@ function currentPurgeCycle(d){
 }
 function purgeHistoryIfNeeded(){
   const cycle=currentPurgeCycle(new Date());
-  if(localStorage.getItem(PURGE_KEY)!==cycle){
-    localStorage.setItem(HISTORY_KEY,'[]');
-    localStorage.setItem(PURGE_KEY,cycle);
-  }
+  purgeCycleRef.transaction(current=>{
+    if(current===cycle)return;
+    return cycle;
+  },(error,committed)=>{
+    if(!error&&committed)historyRef.remove();
+  });
 }
 
 function csvEscape(v){
@@ -269,13 +283,6 @@ function exportHistoryCSV(){
   URL.revokeObjectURL(url);
 }
 
-function loadBorrowed(){
-  try{borrowed=JSON.parse(localStorage.getItem(BORROWED_KEY)||'[]');}catch(e){borrowed=[];}
-}
-function saveBorrowed(){
-  localStorage.setItem(BORROWED_KEY,JSON.stringify(borrowed));
-}
-
 function fmtRemain(ms){
   const totalMin=Math.max(0,Math.ceil(ms/60000));
   const h=Math.floor(totalMin/60),m=totalMin%60;
@@ -291,34 +298,57 @@ function notifyUser(msg){
 function renderAlertBanner(){
   const el=document.getElementById('alertBanner');
   const now=Date.now();
-  const warns=borrowed.filter(b=>{const remain=LOCK_MS-(now-b.id);return remain>0&&remain<=WARN_LEAD;});
+  const warns=Object.values(borrowedMap).filter(b=>{const remain=LOCK_MS-(now-b.borrowedAt);return remain>0&&remain<=WARN_LEAD;});
   if(!warns.length){el.style.display='none';el.innerHTML='';return;}
   el.style.display='block';
-  el.innerHTML=warns.map(b=>`⏰ กุญแจ #${b.key} (${b.name}) จะครบกำหนดคืนใน ${fmtRemain(LOCK_MS-(now-b.id))}`).join('<br>');
+  el.innerHTML=warns.map(b=>`⏰ กุญแจ #${b.key} (${b.name}) จะครบกำหนดคืนใน ${fmtRemain(LOCK_MS-(now-b.borrowedAt))}`).join('<br>');
 }
 
 function tick(){
   const now=Date.now();
-  let changed=false;
-  borrowed.forEach(b=>{
-    const remain=LOCK_MS-(now-b.id);
-    if(remain>0&&remain<=WARN_LEAD&&!b.notified30){
-      b.notified30=true;changed=true;
-      notifyUser(`กุญแจ #${b.key} (${b.name}) จะครบกำหนดคืนใน 30 นาที`);
-      addHistory({ts:Date.now(),type:'warning',key:b.key,name:b.name,dept:b.dept});
+  Object.values(borrowedMap).forEach(b=>{
+    const remain=LOCK_MS-(now-b.borrowedAt);
+    if(remain>0&&remain<=WARN_LEAD){
+      if(!notifiedLocally.has(b.key)){
+        notifiedLocally.add(b.key);
+        notifyUser(`กุญแจ #${b.key} (${b.name}) จะครบกำหนดคืนใน 30 นาที`);
+      }
+      if(!b.notified30){
+        borrowedRef.child(keyNode(b.key)+'/notified30').transaction(cur=>{
+          if(cur===true)return;
+          return true;
+        },(error,committed)=>{
+          if(!error&&committed)addHistory({ts:Date.now(),type:'warning',key:b.key,name:b.name,dept:b.dept});
+        });
+      }
     }
   });
-  if(changed)saveBorrowed();
   renderAlertBanner();
   if(currentTab==='return')renderReturn();
 }
 
 function init(){
-  purgeHistoryIfNeeded();
   const now=new Date();
   document.getElementById('hdrDate').textContent='วันที่ '+now.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'})+' เวลา '+now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
-  loadBorrowed();
+  purgeHistoryIfNeeded();
   buildKeyGrid();renderReturn();
+
+  borrowedRef.on('value',snapshot=>{
+    const val=snapshot.val()||{};
+    const map={};
+    Object.keys(val).forEach(nodeKey=>{const b=val[nodeKey];map[b.key]=b;});
+    borrowedMap=map;
+    buildKeyGrid();
+    if(currentTab==='return')renderReturn();
+    renderAlertBanner();
+  });
+
+  historyRef.on('value',snapshot=>{
+    const val=snapshot.val()||{};
+    historyList=Object.values(val);
+    if(currentTab==='dashboard')renderDashboard();
+  });
+
   tick();
   setInterval(tick,15000);
 }
@@ -326,7 +356,7 @@ function init(){
 function buildKeyGrid(){
   const g=document.getElementById('keyGrid');g.innerHTML='';
   for(let i=1;i<=KEYS;i++){
-    const b=borrowed.find(x=>x.key===i);
+    const b=borrowedMap[i];
     const btn=document.createElement('button');
     btn.className='key-btn'+(selectedKey===i?' selected':'');
     btn.textContent=i;
@@ -335,7 +365,7 @@ function buildKeyGrid(){
     g.appendChild(btn);
   }
 }
-function selectKey(k){if(borrowed.find(x=>x.key===k))return;selectedKey=selectedKey===k?null:k;buildKeyGrid();validateBorrow();}
+function selectKey(k){if(borrowedMap[k])return;selectedKey=selectedKey===k?null:k;buildKeyGrid();validateBorrow();}
 function onLicense(el){el.value=el.value.replace(/\D/g,'');validateBorrow();}
 function validateBorrow(){
   const ok=selectedKey&&document.getElementById('borrowName').value.trim().length>1&&document.getElementById('borrowDept').value&&document.getElementById('licenseNo').value.length===5;
@@ -343,34 +373,45 @@ function validateBorrow(){
 }
 function submitBorrow(){
   const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-  const entry={key:selectedKey,name:document.getElementById('borrowName').value.trim(),dept:document.getElementById('borrowDept').value,license:document.getElementById('licenseNo').value,time:tm,id:Date.now(),notified30:false};
-  borrowed.push(entry);
-  saveBorrowed();
-  addHistory({ts:Date.now(),type:'borrow',key:entry.key,name:entry.name,dept:entry.dept,license:entry.license});
-  if('Notification' in window && Notification.permission==='default'){Notification.requestPermission();}
-  showSuccess('✅','เบิกกุญแจสำเร็จ!','กุญแจ #'+entry.key+' พร้อมใช้งาน',
-    `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
-     <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
-     <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
-     <div class="sc-row"><span class="sc-label">ใบอนุญาต</span><span class="sc-val">${entry.license}</span></div>
-     <div class="sc-row"><span class="sc-label">เวลา</span><span class="sc-val">${entry.time} น.</span></div>`,false);
-  selectedKey=null;
-  document.getElementById('borrowName').value='';
-  document.getElementById('borrowDept').value='';
-  document.getElementById('licenseNo').value='';
+  const key=selectedKey;
+  const entry={key,name:document.getElementById('borrowName').value.trim(),dept:document.getElementById('borrowDept').value,license:document.getElementById('licenseNo').value,time:tm,borrowedAt:Date.now(),notified30:false};
   document.getElementById('borrowBtn').disabled=true;
-  buildKeyGrid();
+  borrowedRef.child(keyNode(key)).transaction(current=>{
+    if(current!==null)return;
+    return entry;
+  },(error,committed)=>{
+    if(error){alert('เกิดข้อผิดพลาด กรุณาลองใหม่: '+error.message);validateBorrow();return;}
+    if(!committed){
+      alert('กุญแจ #'+key+' เพิ่งถูกเบิกไปโดยเครื่องอื่น กรุณาเลือกเบอร์อื่น');
+      selectedKey=null;buildKeyGrid();
+      return;
+    }
+    addHistory({ts:Date.now(),type:'borrow',key:entry.key,name:entry.name,dept:entry.dept,license:entry.license});
+    if('Notification' in window && Notification.permission==='default'){Notification.requestPermission();}
+    showSuccess('✅','เบิกกุญแจสำเร็จ!','กุญแจ #'+entry.key+' พร้อมใช้งาน',
+      `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
+       <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
+       <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
+       <div class="sc-row"><span class="sc-label">ใบอนุญาต</span><span class="sc-val">${entry.license}</span></div>
+       <div class="sc-row"><span class="sc-label">เวลา</span><span class="sc-val">${entry.time} น.</span></div>`,false);
+    selectedKey=null;
+    document.getElementById('borrowName').value='';
+    document.getElementById('borrowDept').value='';
+    document.getElementById('licenseNo').value='';
+    buildKeyGrid();
+  });
 }
 
 function renderReturn(){
   const el=document.getElementById('returnList');
-  if(!borrowed.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีกุญแจที่ถูกเบิก</p></div>';return;}
+  const list=Object.values(borrowedMap).sort((a,b)=>a.borrowedAt-b.borrowedAt);
+  if(!list.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีกุญแจที่ถูกเบิก</p></div>';return;}
   const now=Date.now();
   el.innerHTML='<div class="field-label" style="margin-bottom:10px">เลือกกุญแจที่จะคืน <span class="req">*</span></div>'+
     '<div class="warning" style="margin-bottom:14px">⏰ ควรคืนภายใน 3 ชั่วโมงหลังเบิก มิฉะนั้นถือว่าเกินกำหนด</div>'+
     '<div class="return-card">'+
-    borrowed.map(b=>{
-      const remain=LOCK_MS-(now-b.id);
+    list.map(b=>{
+      const remain=LOCK_MS-(now-b.borrowedAt);
       const overdue=remain<=0;
       const statusTag=overdue
         ?`<div class="lock-badge" style="color:var(--red);background:var(--red-light);border:1px solid #F8B7BC">เกินกำหนด ${fmtRemain(-remain)}</div>`
@@ -380,18 +421,18 @@ function renderReturn(){
         <div><div class="ri-key">กุญแจ #${b.key}</div><div class="ri-meta">${b.name} (${b.dept}) · เบิก ${b.time} น.</div></div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
           ${statusTag}
-          <button class="ri-btn" onclick="openSignature(${b.id})">เลือก</button>
+          <button class="ri-btn" onclick="openSignature(${b.key})">เลือก</button>
         </div>
       </div>`;
     }).join('')+
     '</div>';
 }
 
-function openSignature(id){
-  const entry=borrowed.find(b=>b.id===id);
+function openSignature(key){
+  const entry=borrowedMap[key];
   if(!entry)return;
-  pendingReturnId=id;
-  isOverdueReturn=(Date.now()-entry.id)>LOCK_MS;
+  pendingReturnKey=key;
+  isOverdueReturn=(Date.now()-entry.borrowedAt)>LOCK_MS;
   document.getElementById('view-return').style.display='none';
   document.getElementById('view-sign').style.display='block';
   document.getElementById('signKeyInfo').innerHTML=
@@ -508,11 +549,11 @@ function clearSig2(){
 function backToReturnList(){
   document.getElementById('view-sign').style.display='none';
   document.getElementById('view-return').style.display='block';
-  pendingReturnId=null;
+  pendingReturnKey=null;
 }
 
 function requestPin(){
-  if(document.getElementById('signConfirmBtn').disabled||!pendingReturnId)return;
+  if(document.getElementById('signConfirmBtn').disabled||!pendingReturnKey)return;
   document.getElementById('pinInput').value='';
   document.getElementById('pinInput2').value='';
   document.getElementById('pinError').style.visibility='hidden';
@@ -557,24 +598,34 @@ function showPinError(msg){
   document.getElementById('pinInput').focus();
 }
 function doConfirmReturn(){
-  if(!hasSig||!pendingReturnId)return;
-  const entry=borrowed.find(b=>b.id===pendingReturnId);
+  if(!hasSig||!pendingReturnKey)return;
+  const key=pendingReturnKey;
+  const entry=borrowedMap[key];
   if(!entry)return;
-  const overdue=(Date.now()-entry.id)>LOCK_MS;
+  const overdue=(Date.now()-entry.borrowedAt)>LOCK_MS;
   const reason=overdue?document.getElementById('overdueReason').value.trim():'';
   const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
-  borrowed=borrowed.filter(b=>b.id!==pendingReturnId);
-  pendingReturnId=null;
-  saveBorrowed();
-  addHistory({ts:Date.now(),type:'return',key:entry.key,name:entry.name,dept:entry.dept,status:overdue?'red':'green',reason});
-  document.getElementById('view-sign').style.display='none';
-  showSuccess(overdue?'⚠️':'🔑',overdue?'คืนกุญแจสำเร็จ (เกินกำหนด)':'คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
-    `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
-     <div class="sc-row"><span class="sc-label">ผู้คืน</span><span class="sc-val">${entry.name}</span></div>
-     <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
-     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`+
-    (overdue?`<div class="sc-row"><span class="sc-label">เหตุผลล่าช้า</span><span class="sc-val">${reason}</span></div>`:''),true);
-  buildKeyGrid();
+  borrowedRef.child(keyNode(key)).transaction(current=>{
+    if(current===null||current.borrowedAt!==entry.borrowedAt)return;
+    return null;
+  },(error,committed)=>{
+    if(error){alert('เกิดข้อผิดพลาด กรุณาลองใหม่: '+error.message);return;}
+    if(!committed){
+      alert('ข้อมูลกุญแจนี้เปลี่ยนแปลงจากเครื่องอื่นแล้ว กรุณาลองใหม่');
+      backToReturnList();
+      return;
+    }
+    pendingReturnKey=null;
+    addHistory({ts:Date.now(),type:'return',key:entry.key,name:entry.name,dept:entry.dept,status:overdue?'red':'green',reason});
+    document.getElementById('view-sign').style.display='none';
+    showSuccess(overdue?'⚠️':'🔑',overdue?'คืนกุญแจสำเร็จ (เกินกำหนด)':'คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
+      `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
+       <div class="sc-row"><span class="sc-label">ผู้คืน</span><span class="sc-val">${entry.name}</span></div>
+       <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
+       <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`+
+      (overdue?`<div class="sc-row"><span class="sc-label">เหตุผลล่าช้า</span><span class="sc-val">${reason}</span></div>`:''),true);
+    buildKeyGrid();
+  });
 }
 
 function renderDashboard(){
