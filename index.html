@@ -87,6 +87,12 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
 .pin-row{margin-bottom:10px}
 .pin-row-label{font-size:12.5px;color:#888;margin-bottom:4px;text-align:left}
+.hist-tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px}
+.hist-tab-btn{flex:0 0 auto;padding:8px 14px;border-radius:20px;border:1px solid #ddd;background:#f8f8f8;color:#888;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+.hist-tab-btn[data-cat="borrow"].active{background:var(--red);border-color:var(--red);color:#fff}
+.hist-tab-btn[data-cat="green"].active{background:var(--green);border-color:var(--green);color:#fff}
+.hist-tab-btn[data-cat="red"].active{background:var(--red-dark);border-color:var(--red-dark);color:#fff}
+.hist-tab-btn[data-cat="warning"].active{background:#F5A623;border-color:#F5A623;color:#1a1a1a}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -181,6 +187,12 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
         <button class="ri-btn" style="white-space:nowrap" onclick="exportHistoryCSV()">📥 Export Excel</button>
       </div>
       <div class="warning" style="margin-bottom:14px">🗓️ ข้อมูลจะถูกล้างอัตโนมัติทุกวันที่ 3 ของเดือน</div>
+      <div class="hist-tabs" id="histTabs">
+        <button class="hist-tab-btn" data-cat="borrow" onclick="switchHistCat('borrow')">เบิก</button>
+        <button class="hist-tab-btn" data-cat="green" onclick="switchHistCat('green')">คืนตรงเวลา</button>
+        <button class="hist-tab-btn" data-cat="red" onclick="switchHistCat('red')">คืนเกินกำหนด</button>
+        <button class="hist-tab-btn" data-cat="warning" onclick="switchHistCat('warning')">แจ้งเตือน</button>
+      </div>
       <div id="dashboardList"></div>
     </div>
   </div>
@@ -226,7 +238,7 @@ const VALID_PINS=['0042','4200','4242'];
 const HISTORY_DAYS=30;
 const LOCK_MS=3*60*60*1000;
 const WARN_LEAD=30*60*1000;
-let selectedKey=null,borrowedMap={},historyList=[],currentTab='borrow',pendingReturnKey=null,isOverdueReturn=false;
+let selectedKey=null,borrowedMap={},historyList=[],currentTab='borrow',pendingReturnKey=null,isOverdueReturn=false,dashboardFilter='borrow';
 let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
 let sigCanvas2,sigCtx2,isSigning2=false,hasSig2=false,lastX2=0,lastY2=0;
 let notifiedLocally=new Set();
@@ -628,10 +640,22 @@ function doConfirmReturn(){
   });
 }
 
+function matchesHistCat(e,cat){
+  if(cat==='borrow')return e.type==='borrow';
+  if(cat==='warning')return e.type==='warning';
+  if(cat==='green')return e.type==='return'&&e.status==='green';
+  if(cat==='red')return e.type==='return'&&e.status==='red';
+  return true;
+}
+function switchHistCat(cat){
+  dashboardFilter=cat;
+  renderDashboard();
+}
 function renderDashboard(){
+  document.querySelectorAll('.hist-tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.cat===dashboardFilter));
   const el=document.getElementById('dashboardList');
-  const h=loadHistory().sort((a,b)=>b.ts-a.ts);
-  if(!h.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีประวัติการใช้งาน</p></div>';return;}
+  const h=loadHistory().filter(e=>matchesHistCat(e,dashboardFilter)).sort((a,b)=>b.ts-a.ts);
+  if(!h.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีประวัติในหมวดนี้</p></div>';return;}
   const groups=[];
   h.forEach(e=>{
     const dayLabel=new Date(e.ts).toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
