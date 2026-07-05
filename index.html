@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>เบิกกุญแจโฟล์คลิฟท์ — Makro Store 17</title>
+<title>เบิกกุญแจโฟล์คลิฟท์ - Makro Store 42</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--red:#E8192C;--red-dark:#C01020;--red-light:#FFF0F1;--green:#006E33;--green-light:#F0FAF4}
@@ -89,6 +89,7 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
 .pin-row-label{font-size:12.5px;color:#888;margin-bottom:4px;text-align:left}
 .hist-tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px}
 .hist-tab-btn{flex:0 0 auto;padding:8px 14px;border-radius:20px;border:1px solid #ddd;background:#f8f8f8;color:#888;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap}
+.hist-tab-btn[data-cat="all"].active{background:#333;border-color:#333;color:#fff}
 .hist-tab-btn[data-cat="borrow"].active{background:var(--red);border-color:var(--red);color:#fff}
 .hist-tab-btn[data-cat="green"].active{background:var(--green);border-color:var(--green);color:#fff}
 .hist-tab-btn[data-cat="red"].active{background:var(--red-dark);border-color:var(--red-dark);color:#fff}
@@ -188,6 +189,7 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
       </div>
       <div class="warning" style="margin-bottom:14px">🗓️ ข้อมูลจะถูกล้างอัตโนมัติทุกวันที่ 3 ของเดือน</div>
       <div class="hist-tabs" id="histTabs">
+        <button class="hist-tab-btn" data-cat="all" onclick="switchHistCat('all')">รวม</button>
         <button class="hist-tab-btn" data-cat="borrow" onclick="switchHistCat('borrow')">เบิก</button>
         <button class="hist-tab-btn" data-cat="green" onclick="switchHistCat('green')">คืนตรงเวลา</button>
         <button class="hist-tab-btn" data-cat="red" onclick="switchHistCat('red')">คืนเกินกำหนด</button>
@@ -238,7 +240,7 @@ const VALID_PINS=['0042','4200','4242'];
 const HISTORY_DAYS=30;
 const LOCK_MS=3*60*60*1000;
 const WARN_LEAD=30*60*1000;
-let selectedKey=null,borrowedMap={},historyList=[],currentTab='borrow',pendingReturnKey=null,isOverdueReturn=false,dashboardFilter='borrow';
+let selectedKey=null,borrowedMap={},historyList=[],currentTab='borrow',pendingReturnKey=null,isOverdueReturn=false,dashboardFilter='all';
 let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
 let sigCanvas2,sigCtx2,isSigning2=false,hasSig2=false,lastX2=0,lastY2=0;
 let notifiedLocally=new Set();
@@ -641,6 +643,7 @@ function doConfirmReturn(){
 }
 
 function matchesHistCat(e,cat){
+  if(cat==='all')return true;
   if(cat==='borrow')return e.type==='borrow';
   if(cat==='warning')return e.type==='warning';
   if(cat==='green')return e.type==='return'&&e.status==='green';
