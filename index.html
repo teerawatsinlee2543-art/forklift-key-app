@@ -13,8 +13,8 @@ body{background:#f5f5f5;font-family:'Sarabun',sans-serif;min-height:100vh}
 .hdr-icon{font-size:30px;margin-bottom:4px}
 .hdr-title{font-size:22px;font-weight:600;color:#fff}
 .hdr-date{font-size:12px;color:rgba(255,255,255,.75);margin-top:3px}
-.tabs{display:grid;grid-template-columns:1fr 1fr;padding:12px 12px 0;background:#fff;border-bottom:1px solid #eee}
-.tab-btn{padding:12px;border-radius:10px 10px 0 0;font-size:16px;font-weight:500;cursor:pointer;border:1px solid #ddd;border-bottom:none;background:#f8f8f8;color:#888}
+.tabs{display:grid;grid-template-columns:1fr 1fr 1fr;padding:12px 12px 0;background:#fff;border-bottom:1px solid #eee;gap:4px}
+.tab-btn{padding:11px 4px;border-radius:10px 10px 0 0;font-size:13.5px;font-weight:500;cursor:pointer;border:1px solid #ddd;border-bottom:none;background:#f8f8f8;color:#888}
 .tab-btn.active{background:var(--red-light);color:var(--red);border-color:var(--red)}
 .body{padding:16px;flex:1}
 .field-label{font-size:14px;font-weight:500;color:#333;margin-bottom:8px}
@@ -56,6 +56,23 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
 .sig-clear{background:none;border:none;font-size:13px;color:#aaa;cursor:pointer;padding:4px 8px;font-family:inherit}
 .sig-clear:hover{color:var(--red)}
 .sig-hint{font-size:12px;color:#bbb;text-align:center;margin-top:4px}
+.dash-day{font-size:13px;font-weight:600;color:#aaa;margin:16px 0 8px}
+.dash-day:first-child{margin-top:0}
+.dash-badge{font-size:12px;font-weight:600;border-radius:6px;padding:2px 7px;margin-right:6px}
+.dash-badge.borrow{background:var(--red-light);color:var(--red)}
+.dash-badge.return-b{background:var(--green-light);color:var(--green)}
+.pin-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.pin-box{background:#fff;border-radius:16px;padding:26px 20px;width:100%;max-width:320px;text-align:center}
+.pin-title{font-size:16px;font-weight:600;color:#1a1a1a;margin-bottom:4px}
+.pin-sub{font-size:13px;color:#888;margin-bottom:16px}
+.pin-input{width:100%;padding:14px;border:1.5px solid #ddd;border-radius:10px;font-size:26px;letter-spacing:14px;text-align:center;outline:none;margin-bottom:8px;font-family:inherit}
+.pin-input:focus{border-color:var(--green)}
+.pin-error{color:var(--red);font-size:13px;margin-bottom:8px;min-height:16px}
+.pin-actions{display:flex;gap:10px;margin-top:8px}
+.pin-cancel,.pin-confirm{flex:1;padding:12px;border-radius:10px;border:none;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}
+.pin-cancel{background:#f0f0f0;color:#555}
+.pin-confirm{background:var(--green);color:#fff}
+.dash-btn{display:block;margin:10px auto 0;background:var(--green-light);color:var(--green);border:1px solid #9FE1CB}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
@@ -70,6 +87,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
   <div class="tabs">
     <button class="tab-btn active" id="tab-borrow" onclick="switchTab('borrow')">เบิกกุญแจ</button>
     <button class="tab-btn" id="tab-return" onclick="switchTab('return')">คืนกุญแจ</button>
+    <button class="tab-btn" id="tab-dashboard" onclick="switchTab('dashboard')">แดชบอร์ด</button>
   </div>
   <div class="body">
     <div id="view-borrow">
@@ -115,7 +133,7 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
           <button class="sig-clear" onclick="clearSig()">ล้างลายเซ็น ✕</button>
         </div>
       </div>
-      <button class="submit-btn return-btn" id="signConfirmBtn" disabled onclick="confirmReturn()">✓ ยืนยันการคืนกุญแจ</button>
+      <button class="submit-btn return-btn" id="signConfirmBtn" disabled onclick="requestPin()">✓ ยืนยันการคืนกุญแจ</button>
     </div>
     <div id="view-success" style="display:none">
       <div class="success-screen">
@@ -124,14 +142,46 @@ select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns
         <div class="success-sub" id="successSub"></div>
         <div class="success-card" id="successCard"></div>
         <button class="back-btn" onclick="goHome()">กลับหน้าหลัก</button>
+        <button class="back-btn dash-btn" id="successDashboardBtn" style="display:none" onclick="goDashboardFromSuccess()">📊 ดูประวัติการใช้งาน</button>
       </div>
+    </div>
+    <div id="view-dashboard" style="display:none">
+      <div class="field-label" style="margin-bottom:10px">ประวัติการใช้งาน (ย้อนหลัง 30 วัน)</div>
+      <div id="dashboardList"></div>
+    </div>
+  </div>
+</div>
+<div class="pin-overlay" id="pinOverlay" style="display:none">
+  <div class="pin-box">
+    <div class="pin-title">กรอกรหัส PIN</div>
+    <div class="pin-sub">ยืนยันตัวตนก่อนคืนกุญแจ</div>
+    <input class="pin-input" id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter')verifyPin()">
+    <div class="pin-error" id="pinError" style="visibility:hidden">รหัส PIN ไม่ถูกต้อง</div>
+    <div class="pin-actions">
+      <button class="pin-cancel" onclick="closePinModal()">ยกเลิก</button>
+      <button class="pin-confirm" onclick="verifyPin()">ยืนยัน</button>
     </div>
   </div>
 </div>
 <script>
 const KEYS=30;
+const VALID_PINS=['0042','4200'];
+const HISTORY_KEY='forkliftHistory';
+const HISTORY_DAYS=30;
 let selectedKey=null,borrowed=[],currentTab='borrow',pendingReturnId=null;
 let sigCanvas,sigCtx,isSigning=false,hasSig=false,lastX=0,lastY=0;
+
+function loadHistory(){
+  let h;
+  try{h=JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]');}catch(e){h=[];}
+  const cutoff=Date.now()-HISTORY_DAYS*24*60*60*1000;
+  return h.filter(e=>e.ts>=cutoff);
+}
+function addHistory(entry){
+  const h=loadHistory();
+  h.push(entry);
+  localStorage.setItem(HISTORY_KEY,JSON.stringify(h));
+}
 
 function init(){
   const now=new Date();
@@ -161,12 +211,13 @@ function submitBorrow(){
   const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
   const entry={key:selectedKey,name:document.getElementById('borrowName').value.trim(),dept:document.getElementById('borrowDept').value,license:document.getElementById('licenseNo').value,time:tm,id:Date.now()};
   borrowed.push(entry);
+  addHistory({ts:Date.now(),type:'borrow',key:entry.key,name:entry.name,dept:entry.dept,license:entry.license});
   showSuccess('✅','เบิกกุญแจสำเร็จ!','กุญแจ #'+entry.key+' พร้อมใช้งาน',
     `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
      <div class="sc-row"><span class="sc-label">ผู้เบิก</span><span class="sc-val">${entry.name}</span></div>
      <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
      <div class="sc-row"><span class="sc-label">ใบอนุญาต</span><span class="sc-val">${entry.license}</span></div>
-     <div class="sc-row"><span class="sc-label">เวลา</span><span class="sc-val">${entry.time} น.</span></div>`);
+     <div class="sc-row"><span class="sc-label">เวลา</span><span class="sc-val">${entry.time} น.</span></div>`,false);
   selectedKey=null;
   document.getElementById('borrowName').value='';
   document.getElementById('borrowDept').value='';
@@ -254,48 +305,100 @@ function backToReturnList(){
   pendingReturnId=null;
 }
 
-function confirmReturn(){
+function requestPin(){
+  if(!hasSig||!pendingReturnId)return;
+  document.getElementById('pinInput').value='';
+  document.getElementById('pinError').style.visibility='hidden';
+  document.getElementById('pinOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('pinInput').focus(),50);
+}
+function closePinModal(){
+  document.getElementById('pinOverlay').style.display='none';
+}
+function verifyPin(){
+  const val=document.getElementById('pinInput').value;
+  if(VALID_PINS.includes(val)){
+    closePinModal();
+    doConfirmReturn();
+  }else{
+    document.getElementById('pinError').style.visibility='visible';
+    document.getElementById('pinInput').value='';
+    document.getElementById('pinInput').focus();
+  }
+}
+function doConfirmReturn(){
   if(!hasSig||!pendingReturnId)return;
   const entry=borrowed.find(b=>b.id===pendingReturnId);
   if(!entry)return;
   const now=new Date();const tm=now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
   borrowed=borrowed.filter(b=>b.id!==pendingReturnId);
   pendingReturnId=null;
+  addHistory({ts:Date.now(),type:'return',key:entry.key,name:entry.name,dept:entry.dept});
   document.getElementById('view-sign').style.display='none';
   showSuccess('🔑','คืนกุญแจสำเร็จ!','กุญแจ #'+entry.key+' คืนเรียบร้อยแล้ว',
     `<div class="sc-row"><span class="sc-label">กุญแจ</span><span class="sc-val">#${entry.key}</span></div>
      <div class="sc-row"><span class="sc-label">ผู้คืน</span><span class="sc-val">${entry.name}</span></div>
      <div class="sc-row"><span class="sc-label">แผนก</span><span class="sc-val">${entry.dept}</span></div>
-     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`);
+     <div class="sc-row"><span class="sc-label">เวลาคืน</span><span class="sc-val">${tm} น.</span></div>`,true);
   buildKeyGrid();
 }
 
-function showSuccess(icon,title,sub,cardHtml){
-  ['view-borrow','view-return','view-sign'].forEach(id=>document.getElementById(id).style.display='none');
+function renderDashboard(){
+  const el=document.getElementById('dashboardList');
+  const h=loadHistory().sort((a,b)=>b.ts-a.ts);
+  if(!h.length){el.innerHTML='<div class="empty"><p style="font-size:16px">ยังไม่มีประวัติการใช้งาน</p></div>';return;}
+  const groups=[];
+  h.forEach(e=>{
+    const dayLabel=new Date(e.ts).toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+    let g=groups.find(g=>g.dayLabel===dayLabel);
+    if(!g){g={dayLabel,items:[]};groups.push(g);}
+    g.items.push(e);
+  });
+  el.innerHTML=groups.map(g=>
+    `<div class="dash-day">${g.dayLabel}</div><div class="return-card">`+
+    g.items.map(e=>{
+      const timeLabel=new Date(e.ts).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});
+      const isBorrow=e.type==='borrow';
+      return `<div class="return-item">
+        <div><div class="ri-key"><span class="dash-badge ${isBorrow?'borrow':'return-b'}">${isBorrow?'เบิก':'คืน'}</span>กุญแจ #${e.key}</div><div class="ri-meta">${e.name} (${e.dept}) · ${timeLabel} น.</div></div>
+      </div>`;
+    }).join('')+
+    '</div>'
+  ).join('');
+}
+
+function goDashboardFromSuccess(){
+  document.getElementById('view-success').style.display='none';
+  switchTab('dashboard');
+}
+
+function showSuccess(icon,title,sub,cardHtml,isReturn){
+  ['view-borrow','view-return','view-sign','view-dashboard'].forEach(id=>document.getElementById(id).style.display='none');
   document.getElementById('view-success').style.display='block';
   document.getElementById('successIcon').textContent=icon;
   document.getElementById('successTitle').textContent=title;
   document.getElementById('successSub').textContent=sub;
   document.getElementById('successCard').innerHTML=cardHtml;
+  document.getElementById('successDashboardBtn').style.display=isReturn?'block':'none';
 }
 
 function switchTab(t){
   currentTab=t;
   document.getElementById('tab-borrow').classList.toggle('active',t==='borrow');
   document.getElementById('tab-return').classList.toggle('active',t==='return');
-  ['view-borrow','view-return','view-sign','view-success'].forEach(id=>document.getElementById(id).style.display='none');
+  document.getElementById('tab-dashboard').classList.toggle('active',t==='dashboard');
+  ['view-borrow','view-return','view-sign','view-success','view-dashboard'].forEach(id=>document.getElementById(id).style.display='none');
   if(t==='borrow')document.getElementById('view-borrow').style.display='block';
-  else{document.getElementById('view-return').style.display='block';renderReturn();}
+  else if(t==='return'){document.getElementById('view-return').style.display='block';renderReturn();}
+  else{document.getElementById('view-dashboard').style.display='block';renderDashboard();}
 }
 
 function goHome(){
   ['view-success','view-sign'].forEach(id=>document.getElementById(id).style.display='none');
-  if(currentTab==='borrow')document.getElementById('view-borrow').style.display='block';
-  else{document.getElementById('view-return').style.display='block';renderReturn();}
+  switchTab(currentTab==='dashboard'?'borrow':currentTab);
 }
 
 init();
 </script>
 </body>
 </html>
-
