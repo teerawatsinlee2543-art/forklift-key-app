@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>เบิกกุญแจโฟล์คลิฟ — Makro Store 17</title>
+<title>เบิกกุญแจโฟล์คลิฟท์ — Makro Store 17</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--red:#E8192C;--red-dark:#C01020;--red-light:#FFF0F1;--green:#006E33;--green-light:#F0FAF4}
@@ -95,7 +95,7 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
   <div class="hdr">
     <div style="font-size:22px;font-weight:600;color:#fff;letter-spacing:.04em;margin-bottom:2px">ST. 42 รามอินทรา</div>
     <div class="hdr-icon">🔑</div>
-    <div class="hdr-title">เบิกกุญแจโฟล์คลิฟ</div>
+    <div class="hdr-title">เบิกกุญแจโฟล์คลิฟท์</div>
     <div class="hdr-date" id="hdrDate"></div>
   </div>
   <div class="tabs">
@@ -126,7 +126,7 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
         <option value="O2O">O2O</option>
         <option value="SAFETY">SAFETY</option>
       </select>
-      <div class="field-label">เลขบัตรใบอนุญาตขับโฟล์คลิฟ <span class="req">*</span></div>
+      <div class="field-label">เลขบัตรใบอนุญาตขับโฟล์คลิฟท์ <span class="req">*</span></div>
       <input class="inp" type="tel" id="licenseNo" maxlength="5" placeholder="กรอกเลขใบอนุญาต 5 หลัก" oninput="onLicense(this)">
       <div class="warning">⚠️ ต้องกรอกเลขใบอนุญาต 5 หลักก่อนจึงจะเบิกได้</div>
       <button class="submit-btn borrow" id="borrowBtn" disabled onclick="submitBorrow()">✓ ยืนยันการเบิกกุญแจ</button>
@@ -174,7 +174,11 @@ textarea.inp{min-height:70px;resize:vertical;font-family:inherit}
       </div>
     </div>
     <div id="view-dashboard" style="display:none">
-      <div class="field-label" style="margin-bottom:10px">ประวัติการใช้งาน (ย้อนหลัง 30 วัน)</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px">
+        <div class="field-label" style="margin-bottom:0">ประวัติการใช้งาน (ย้อนหลัง 30 วัน)</div>
+        <button class="ri-btn" style="white-space:nowrap" onclick="exportHistoryCSV()">📥 Export Excel</button>
+      </div>
+      <div class="warning" style="margin-bottom:14px">🗓️ ข้อมูลจะถูกล้างอัตโนมัติทุกวันที่ 3 ของเดือน</div>
       <div id="dashboardList"></div>
     </div>
   </div>
@@ -222,6 +226,49 @@ function addHistory(entry){
   localStorage.setItem(HISTORY_KEY,JSON.stringify(h));
 }
 
+const PURGE_KEY='forkliftHistoryPurgeCycle';
+function currentPurgeCycle(d){
+  const y=d.getFullYear(),m=d.getMonth();
+  if(d.getDate()>=3)return `${y}-${m}`;
+  const pm=m===0?11:m-1,py=m===0?y-1:y;
+  return `${py}-${pm}`;
+}
+function purgeHistoryIfNeeded(){
+  const cycle=currentPurgeCycle(new Date());
+  if(localStorage.getItem(PURGE_KEY)!==cycle){
+    localStorage.setItem(HISTORY_KEY,'[]');
+    localStorage.setItem(PURGE_KEY,cycle);
+  }
+}
+
+function csvEscape(v){
+  const s=String(v==null?'':v);
+  return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+function exportHistoryCSV(){
+  const h=loadHistory().sort((a,b)=>a.ts-b.ts);
+  if(!h.length){alert('ไม่มีข้อมูลประวัติให้ส่งออก');return;}
+  const headers=['วันที่','เวลา','ประเภท','กุญแจ','ชื่อ','แผนก','เหตุผล'];
+  const rows=h.map(e=>{
+    const d=new Date(e.ts);
+    let typeLabel;
+    if(e.type==='borrow')typeLabel='เบิก';
+    else if(e.type==='warning')typeLabel='แจ้งเตือน';
+    else typeLabel=e.status==='red'?'คืนเกินกำหนด':'คืนตรงเวลา';
+    return [d.toLocaleDateString('th-TH'),d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}),typeLabel,e.key,e.name,e.dept,e.reason||''];
+  });
+  const csv=[headers,...rows].map(r=>r.map(csvEscape).join(',')).join('\r\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='forklift_history_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 function loadBorrowed(){
   try{borrowed=JSON.parse(localStorage.getItem(BORROWED_KEY)||'[]');}catch(e){borrowed=[];}
 }
@@ -267,6 +314,7 @@ function tick(){
 }
 
 function init(){
+  purgeHistoryIfNeeded();
   const now=new Date();
   document.getElementById('hdrDate').textContent='วันที่ '+now.toLocaleDateString('th-TH',{weekday:'short',year:'numeric',month:'short',day:'numeric'})+' เวลา '+now.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})+' น.';
   loadBorrowed();
@@ -593,5 +641,3 @@ init();
 </script>
 </body>
 </html>
-
-
